@@ -1,0 +1,22 @@
+# Environment Configuration Template
+# Copy this file to .env and fill in your actual values
+
+# Email Configuration
+EMAIL_USER=your_email@gmail.com
+EMAIL_PASSWORD=your_app_password
+RECIPIENT_EMAIL=your_email@gmail.com
+
+# SMTP Server Configuration (Gmail example)
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+
+# Optional: Custom search terms (comma-separated)
+# If not set, will use the default search terms in main.py
+# CUSTOM_SEARCH_TERMS=navy champion reverse weave,yale champion reverse weave
+
+# Optional: Monitoring frequency (in minutes)
+# MONITORING_FREQUENCY=60
+
+# Optional: Maximum pages to scrape per search term
+# MAX_PAGES_EBAY=3
+# MAX_PAGES_DEPOP=2
