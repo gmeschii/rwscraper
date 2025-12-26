@@ -54,21 +54,33 @@ class DepopSeleniumScraper:
 				# ChromeDriverManager may return wrong file (e.g., THIRD_PARTY_NOTICES.chromedriver)
 				# Find the actual chromedriver executable
 				if os.path.isfile(driver_path) and "THIRD_PARTY" in driver_path:
-					# Wrong file returned, look in the same directory
+					# Wrong file returned, look in the same directory and subdirectories
 					driver_dir = os.path.dirname(driver_path)
-					actual_driver = os.path.join(driver_dir, "chromedriver")
-					if os.path.exists(actual_driver):
-						driver_path = actual_driver
+					possible_paths = [
+						os.path.join(driver_dir, "chromedriver"),
+						os.path.join(driver_dir, "chromedriver-linux64", "chromedriver"),
+						os.path.join(driver_dir, "chromedriver-mac-arm64", "chromedriver"),
+						os.path.join(driver_dir, "chromedriver-mac-x64", "chromedriver"),
+					]
+					for path in possible_paths:
+						if os.path.exists(path):
+							driver_path = path
+							# Ensure executable permissions
+							os.chmod(path, 0o755)
+							break
 				elif os.path.isdir(driver_path):
 					# Look for chromedriver in the directory
 					possible_paths = [
 						os.path.join(driver_path, "chromedriver"),
+						os.path.join(driver_path, "chromedriver-linux64", "chromedriver"),
 						os.path.join(driver_path, "chromedriver-mac-arm64", "chromedriver"),
 						os.path.join(driver_path, "chromedriver-mac-x64", "chromedriver"),
 					]
 					for path in possible_paths:
-						if os.path.exists(path) and os.access(path, os.X_OK):
+						if os.path.exists(path):
 							driver_path = path
+							# Ensure executable permissions
+							os.chmod(path, 0o755)
 							break
 				service = Service(driver_path)
 				self.driver = webdriver.Chrome(service=service, options=options)
