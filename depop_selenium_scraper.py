@@ -9,6 +9,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 import time
 import logging
 import re
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +25,53 @@ class DepopSeleniumScraper:
 		options.add_argument('--disable-dev-shm-usage')
 		options.add_argument('--disable-blink-features=AutomationControlled')
 		options.add_argument('--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-		# options.add_argument('--headless')  # toggle if desired
+		
+		# Use headless mode in server environments (Docker, cloud platforms)
+		# Set HEADLESS=false in .env to disable headless mode for local debugging
+		if os.getenv('HEADLESS', 'true').lower() == 'true':
+			options.add_argument('--headless')
+			options.add_argument('--headless=new')  # Use new headless mode
+			logger.info("Depop scraper running in headless mode (server environment)")
+		else:
+			logger.info("Depop scraper running in non-headless mode (local debugging)")
+		
 		options.add_experimental_option("excludeSwitches", ["enable-automation"])
 		options.add_experimental_option('useAutomationExtension', False)
 		try:
-			service = Service("./chromedriver")
-			self.driver = webdriver.Chrome(service=service, options=options)
+			# Try to use local chromedriver first, fall back to system PATH
+			chromedriver_path = "./chromedriver"
+			if not os.path.exists(chromedriver_path):
+				# In Docker/cloud environments, chromedriver is in PATH
+				chromedriver_path = "chromedriver"
+			
+			try:
+				service = Service(chromedriver_path)
+				self.driver = webdriver.Chrome(service=service, options=options)
+			except Exception:
+				# Fall back to ChromeDriverManager if local driver fails
+				logger.info("Local chromedriver not found, using ChromeDriverManager")
+				driver_path = ChromeDriverManager().install()
+				# ChromeDriverManager may return wrong file (e.g., THIRD_PARTY_NOTICES.chromedriver)
+				# Find the actual chromedriver executable
+				if os.path.isfile(driver_path) and "THIRD_PARTY" in driver_path:
+					# Wrong file returned, look in the same directory
+					driver_dir = os.path.dirname(driver_path)
+					actual_driver = os.path.join(driver_dir, "chromedriver")
+					if os.path.exists(actual_driver):
+						driver_path = actual_driver
+				elif os.path.isdir(driver_path):
+					# Look for chromedriver in the directory
+					possible_paths = [
+						os.path.join(driver_path, "chromedriver"),
+						os.path.join(driver_path, "chromedriver-mac-arm64", "chromedriver"),
+						os.path.join(driver_path, "chromedriver-mac-x64", "chromedriver"),
+					]
+					for path in possible_paths:
+						if os.path.exists(path) and os.access(path, os.X_OK):
+							driver_path = path
+							break
+				service = Service(driver_path)
+				self.driver = webdriver.Chrome(service=service, options=options)
 			self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 			self.driver.set_window_size(1440, 900)
 			logger.info("Depop Chrome driver initialized successfully")
@@ -143,9 +185,9 @@ class DepopSeleniumScraper:
 						except Exception:
 							pass
 						
-						# Filter for Champion reverse weave - be more lenient
+						# Filter items based on search term to ensure relevance
 						t_lower = title.lower()
-						if 'champion' in t_lower and ('reverse' in t_lower or 'weave' in t_lower):
+						if self._matches_search_term(t_lower, term):
 							results.append({
 								'listing_id': pid,
 								'platform': 'Depop',
@@ -192,7 +234,7 @@ class DepopSeleniumScraper:
 									
 									# Use title or slug for filtering
 									search_text = f"{title} {slug}".lower()
-									if 'champion' in search_text and any(k in search_text for k in ['reverse weave','reverse-weave','reverseweave']):
+									if self._matches_search_term(search_text, term):
 										# Get price
 										price = 'Price not available'
 										pricing = product.get('pricing', {})
@@ -231,6 +273,81 @@ class DepopSeleniumScraper:
 			logger.debug(f"Error extracting products from JSON: {e}")
 		
 		return products
+	
+	def _matches_search_term(self, title, search_term):
+		"""Check if the title matches the search term criteria"""
+		title_lower = title.lower() if isinstance(title, str) else str(title).lower()
+		search_lower = search_term.lower()
+		
+		# Extract key brand/product words from search term
+		search_words = search_lower.split()
+		
+		# Define category patterns
+		champion_patterns = ['champion']
+		reverse_weave_patterns = ['reverse weave', 'reverse-weave', 'reverseweave']
+		north_face_patterns = ['north face', 'northface']
+		puffer_patterns = ['puffer', 'down jacket', 'down', 'nuptse', 'mountain jacket']
+		levi_patterns = ['levi', 'levis', 'levi\'s']
+		pendleton_patterns = ['pendleton']
+		board_shirt_patterns = ['board shirt', 'wool shirt', 'flannel']
+		loop_collar_patterns = ['loop collar', 'loop-collar']
+		vintage_patterns = ['vintage', '80s', '90s', 'retro']
+		usa_patterns = ['made in usa', 'made in u.s.a.', 'usa', 'u.s.a.']
+		
+		# Check for exclude keywords
+		exclude_keywords = ['not ', 'like ', 'similar to ', ' style', 'inspired']
+		if any(exclude in title_lower for exclude in exclude_keywords):
+			# Check if it's a false positive
+			if 'not champion' in title_lower and 'champion' not in search_lower:
+				return False
+		
+		# Champion Reverse Weave matching
+		if 'champion' in search_lower and 'reverse' in search_lower:
+			has_champion = any(p in title_lower for p in champion_patterns)
+			has_reverse_weave = any(p in title_lower for p in reverse_weave_patterns)
+			return has_champion and has_reverse_weave
+		
+		# North Face matching
+		if any(nf in search_lower for nf in north_face_patterns):
+			has_north_face = any(p in title_lower for p in north_face_patterns)
+			# If search includes puffer/down, require it
+			if any(p in search_lower for p in puffer_patterns):
+				has_puffer = any(p in title_lower for p in puffer_patterns)
+				return has_north_face and has_puffer
+			return has_north_face
+		
+		# Levi's matching
+		if any(levi in search_lower for levi in levi_patterns):
+			has_levi = any(p in title_lower for p in levi_patterns)
+			# If search includes "black", require it
+			if 'black' in search_lower:
+				has_black = 'black' in title_lower
+				if not has_black:
+					return False
+			# If search includes "made in usa", require it
+			if 'usa' in search_lower or 'made in' in search_lower:
+				has_usa = any(p in title_lower for p in usa_patterns)
+				if not has_usa:
+					return False
+			return has_levi
+		
+		# Pendleton matching
+		if any(pend in search_lower for pend in pendleton_patterns):
+			has_pendleton = any(p in title_lower for p in pendleton_patterns)
+			# If search includes board shirt or loop collar, prefer it
+			if 'board shirt' in search_lower or 'loop collar' in search_lower:
+				has_specific = any(p in title_lower for p in board_shirt_patterns + loop_collar_patterns)
+				return has_pendleton and (has_specific or 'shirt' in title_lower)
+			return has_pendleton
+		
+		# Generic matching: require at least 2 key words from search term
+		important_words = [w for w in search_words if w not in ['vintage', '80s', '90s', 'the', 'a', 'an', 'and', 'or']]
+		if len(important_words) >= 2:
+			matches = sum(1 for word in important_words if word in title_lower)
+			return matches >= 2
+		
+		# Fallback: require at least one key word
+		return any(word in title_lower for word in important_words if len(word) > 3)
 	
 	def close(self):
 		if self.driver:

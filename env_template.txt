@@ -20,3 +20,6 @@ SMTP_PORT=587
 # Optional: Maximum pages to scrape per search term
 # MAX_PAGES_EBAY=3
 # MAX_PAGES_DEPOP=2
+
+# Optional: Headless mode for Selenium (true for servers, false for local debugging)
+# HEADLESS=true

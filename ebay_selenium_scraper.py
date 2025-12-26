@@ -12,6 +12,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 import time
 import logging
 import re
+import os
 from urllib.parse import urljoin
 
 logger = logging.getLogger(__name__)
@@ -38,16 +39,53 @@ class EbaySeleniumScraper:
         # chrome_options.add_argument('--disable-javascript')  # Keep JS enabled for dynamic content
         chrome_options.add_argument('--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         
-        # Remove headless mode for better stealth (comment out for production)
-        # chrome_options.add_argument('--headless')
+        # Use headless mode in server environments (Docker, cloud platforms)
+        # Set HEADLESS=false in .env to disable headless mode for local debugging
+        if os.getenv('HEADLESS', 'true').lower() == 'true':
+            chrome_options.add_argument('--headless')
+            chrome_options.add_argument('--headless=new')  # Use new headless mode
+            logger.info("Running in headless mode (server environment)")
+        else:
+            logger.info("Running in non-headless mode (local debugging)")
         
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
         
         try:
-            # Use system ChromeDriver
-            service = Service("./chromedriver")
-            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            # Try to use local chromedriver first, fall back to system PATH
+            chromedriver_path = "./chromedriver"
+            if not os.path.exists(chromedriver_path):
+                # In Docker/cloud environments, chromedriver is in PATH
+                chromedriver_path = "chromedriver"
+            
+            try:
+                service = Service(chromedriver_path)
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            except Exception:
+                # Fall back to ChromeDriverManager if local driver fails
+                logger.info("Local chromedriver not found, using ChromeDriverManager")
+                driver_path = ChromeDriverManager().install()
+                # ChromeDriverManager may return wrong file (e.g., THIRD_PARTY_NOTICES.chromedriver)
+                # Find the actual chromedriver executable
+                if os.path.isfile(driver_path) and "THIRD_PARTY" in driver_path:
+                    # Wrong file returned, look in the same directory
+                    driver_dir = os.path.dirname(driver_path)
+                    actual_driver = os.path.join(driver_dir, "chromedriver")
+                    if os.path.exists(actual_driver):
+                        driver_path = actual_driver
+                elif os.path.isdir(driver_path):
+                    # Look for chromedriver in the directory
+                    possible_paths = [
+                        os.path.join(driver_path, "chromedriver"),
+                        os.path.join(driver_path, "chromedriver-mac-arm64", "chromedriver"),
+                        os.path.join(driver_path, "chromedriver-mac-x64", "chromedriver"),
+                    ]
+                    for path in possible_paths:
+                        if os.path.exists(path) and os.access(path, os.X_OK):
+                            driver_path = path
+                            break
+                service = Service(driver_path)
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
             
             # Execute stealth scripts
             self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
@@ -282,8 +320,8 @@ class EbaySeleniumScraper:
             # Get listing URL
             listing_url = href
             
-            # Filter for Champion reverse weave items
-            if not self._is_champion_reverse_weave(title):
+            # Filter items based on search term to ensure relevance
+            if not self._matches_search_term(title, search_term):
                 return None
             
             return {
@@ -300,22 +338,81 @@ class EbaySeleniumScraper:
             logger.debug(f"Error extracting item data: {e}")
             return None
     
-    def _is_champion_reverse_weave(self, title):
-        """Check if the title indicates this is a Champion reverse weave item"""
+    def _matches_search_term(self, title, search_term):
+        """Check if the title matches the search term criteria"""
         title_lower = title.lower()
+        search_lower = search_term.lower()
         
-        # Must contain "champion" and "reverse weave"
-        champion_keywords = ['champion']
-        reverse_weave_keywords = ['reverse weave', 'reverse-weave', 'reverseweave']
+        # Extract key brand/product words from search term
+        search_words = search_lower.split()
         
-        has_champion = any(keyword in title_lower for keyword in champion_keywords)
-        has_reverse_weave = any(keyword in title_lower for keyword in reverse_weave_keywords)
+        # Define category patterns
+        champion_patterns = ['champion']
+        reverse_weave_patterns = ['reverse weave', 'reverse-weave', 'reverseweave']
+        north_face_patterns = ['north face', 'northface']
+        puffer_patterns = ['puffer', 'down jacket', 'down', 'nuptse', 'mountain jacket']
+        levi_patterns = ['levi', 'levis', 'levi\'s']
+        pendleton_patterns = ['pendleton']
+        board_shirt_patterns = ['board shirt', 'wool shirt', 'flannel']
+        loop_collar_patterns = ['loop collar', 'loop-collar']
+        vintage_patterns = ['vintage', '80s', '90s', 'retro']
+        usa_patterns = ['made in usa', 'made in u.s.a.', 'usa', 'u.s.a.']
         
-        # Additional filters to avoid irrelevant items
-        exclude_keywords = ['not champion', 'like champion', 'similar to champion', 'champion style']
-        has_exclude = any(keyword in title_lower for keyword in exclude_keywords)
+        # Check for exclude keywords
+        exclude_keywords = ['not ', 'like ', 'similar to ', ' style', 'inspired']
+        if any(exclude in title_lower for exclude in exclude_keywords):
+            # Check if it's a false positive (e.g., "not champion" but still relevant)
+            if 'not champion' in title_lower and 'champion' not in search_lower:
+                return False
         
-        return has_champion and has_reverse_weave and not has_exclude
+        # Champion Reverse Weave matching
+        if 'champion' in search_lower and 'reverse' in search_lower:
+            has_champion = any(p in title_lower for p in champion_patterns)
+            has_reverse_weave = any(p in title_lower for p in reverse_weave_patterns)
+            return has_champion and has_reverse_weave
+        
+        # North Face matching
+        if any(nf in search_lower for nf in north_face_patterns):
+            has_north_face = any(p in title_lower for p in north_face_patterns)
+            # If search includes puffer/down, require it
+            if any(p in search_lower for p in puffer_patterns):
+                has_puffer = any(p in title_lower for p in puffer_patterns)
+                return has_north_face and has_puffer
+            return has_north_face
+        
+        # Levi's matching
+        if any(levi in search_lower for levi in levi_patterns):
+            has_levi = any(p in title_lower for p in levi_patterns)
+            # If search includes "black", require it
+            if 'black' in search_lower:
+                has_black = 'black' in title_lower
+                if not has_black:
+                    return False
+            # If search includes "made in usa", require it
+            if 'usa' in search_lower or 'made in' in search_lower:
+                has_usa = any(p in title_lower for p in usa_patterns)
+                if not has_usa:
+                    return False
+            return has_levi
+        
+        # Pendleton matching
+        if any(pend in search_lower for pend in pendleton_patterns):
+            has_pendleton = any(p in title_lower for p in pendleton_patterns)
+            # If search includes board shirt or loop collar, prefer it
+            if 'board shirt' in search_lower or 'loop collar' in search_lower:
+                has_specific = any(p in title_lower for p in board_shirt_patterns + loop_collar_patterns)
+                return has_pendleton and (has_specific or 'shirt' in title_lower)
+            return has_pendleton
+        
+        # Generic matching: require at least 2 key words from search term
+        # (excluding common words like "vintage", "80s", etc.)
+        important_words = [w for w in search_words if w not in ['vintage', '80s', '90s', 'the', 'a', 'an', 'and', 'or']]
+        if len(important_words) >= 2:
+            matches = sum(1 for word in important_words if word in title_lower)
+            return matches >= 2
+        
+        # Fallback: require at least one key word
+        return any(word in title_lower for word in important_words if len(word) > 3)
     
     def close(self):
         """Close the browser driver"""

@@ -1,5 +1,5 @@
-# Champion Reverse Weave Monitor Bot
-# Monitors eBay and Depop for new Champion reverse weave listings
+# Vintage Clothing Monitor Bot
+# Monitors eBay and Depop for new vintage clothing listings
 # Sends hourly email notifications with no duplicates
 
 import os
@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 # Search terms to monitor
 SEARCH_TERMS = [
+    # Champion Reverse Weave
     "navy champion reverse weave",
     "yale champion reverse weave", 
     "stanford champion reverse weave",
@@ -46,10 +47,37 @@ SEARCH_TERMS = [
     "black champion reverse weave",
     "80s champion reverse weave",
     "90s champion reverse weave",
-    "army champion reverse weave"
+    "army champion reverse weave",
+    # North Face - Vintage 80s Puffer/Down Jackets
+    "vintage 80s north face puffer",
+    "vintage 80s north face down jacket",
+    "80s north face puffer jacket",
+    "vintage north face puffer",
+    "vintage north face down jacket",
+    "80s north face jacket",
+    "vintage north face nuptse",
+    "vintage north face mountain jacket",
+    # Levi's - Vintage Black Made in USA
+    "vintage black made in usa levi",
+    "vintage black levi made in usa",
+    "black levi made in usa",
+    "vintage black levi jacket",
+    "vintage black levi denim jacket",
+    "vintage black levi trucker",
+    "vintage black levi type 3",
+    "vintage black levi sherpa",
+    "vintage black levi corduroy",
+    # Pendleton - Board Shirts and Loop Collars
+    "vintage pendleton board shirt",
+    "vintage pendleton loop collar",
+    "pendleton board shirt",
+    "pendleton loop collar",
+    "vintage pendleton wool shirt",
+    "vintage pendleton flannel",
+    "pendleton made in usa shirt"
 ]
 
-class ChampionMonitorBot:
+class VintageClothingMonitorBot:
     def __init__(self):
         self.db_path = 'champion_listings.db'
         self.init_database()
@@ -133,7 +161,7 @@ class ChampionMonitorBot:
         
         # Create email message
         msg = MIMEMultipart('alternative')
-        msg['Subject'] = f"New Champion Reverse Weave Listings - {len(new_listings)} items"
+        msg['Subject'] = f"New Vintage Clothing Listings - {len(new_listings)} items"
         msg['From'] = email_user
         msg['To'] = recipient_email
         
@@ -191,7 +219,7 @@ class ChampionMonitorBot:
         </head>
         <body>
             <div class="header">
-                <h2 style="margin: 0;">🏆 New Champion Reverse Weave Listings</h2>
+                <h2 style="margin: 0;">🏆 New Vintage Clothing Listings</h2>
                 <p style="margin: 5px 0 0 0;">Found <strong>{len(listings)}</strong> new listings across <strong>{len(grouped_listings)}</strong> search terms</p>
             </div>
         """
@@ -237,7 +265,7 @@ class ChampionMonitorBot:
         
         html += """
             <div style="margin-top: 20px; padding: 10px; background: #f8f9fa; border-radius: 4px; text-align: center;">
-                <small>This email was sent by your Champion Reverse Weave Monitor Bot</small>
+                <small>This email was sent by your Vintage Clothing Monitor Bot</small>
             </div>
         </body>
         </html>
@@ -297,7 +325,7 @@ class ChampionMonitorBot:
     
     def start_monitoring(self):
         """Start the monitoring bot"""
-        logger.info("Starting Champion Reverse Weave Monitor Bot")
+        logger.info("Starting Vintage Clothing Monitor Bot")
         
         # Schedule to run every hour
         schedule.every().hour.do(self.run_monitoring_cycle)
@@ -311,5 +339,5 @@ class ChampionMonitorBot:
             time.sleep(60)  # Check every minute
 
 if __name__ == "__main__":
-    bot = ChampionMonitorBot()
+    bot = VintageClothingMonitorBot()
     bot.start_monitoring()

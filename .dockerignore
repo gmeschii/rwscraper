@@ -1,0 +1,25 @@
+# Docker ignore file
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+ENV/
+.venv
+*.db
+*.log
+logs/
+*.zip
+chromedriver-mac*
+.DS_Store
+.git/
+.gitignore
+README.md
+RASPBERRY_PI_SETUP.md
+CLOUD_DEPLOYMENT.md
+.env
+*.md
+!requirements.txt
+

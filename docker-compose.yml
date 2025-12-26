@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  champion-monitor:
+    build: .
+    container_name: champion-monitor
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Persist database between restarts
+      - ./champion_listings.db:/app/champion_listings.db
+      - ./logs:/app/logs
+    # Optional: Set resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+

@@ -1,6 +1,6 @@
 # Champion Reverse Weave Monitor Bot
 
-A Python bot that monitors eBay and Depop for new Champion reverse weave listings and sends email notifications. Perfect for running on a Raspberry Pi with Tailscale for remote access.
+A Python bot that monitors eBay and Depop for new Champion reverse weave listings and sends email notifications. Can run on a Raspberry Pi, cloud platforms, or locally.
 
 ## Features
 
@@ -10,6 +10,7 @@ A Python bot that monitors eBay and Depop for new Champion reverse weave listing
 - 🚫 Prevents duplicate notifications using SQLite database
 - 🕐 Runs continuously with hourly checks
 - 🍓 Optimized for Raspberry Pi deployment
+- ☁️ **Easy cloud deployment** - Run on Railway, Render, Fly.io, or AWS
 - 🔒 Secure email configuration with app passwords
 
 ## Search Terms Monitored
@@ -61,7 +62,26 @@ A Python bot that monitors eBay and Depop for new Champion reverse weave listing
    - Generate password for "Mail"
    - Use this password in `EMAIL_PASSWORD`
 
-## Raspberry Pi Deployment
+## Deployment Options
+
+### ☁️ Cloud Deployment (Recommended - Easiest!)
+
+**No hardware needed!** Deploy to cloud platforms in minutes. Perfect if you don't have a Raspberry Pi or want easier setup.
+
+See [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md) for detailed instructions on:
+- **Railway** (Recommended - easiest setup, $5/month)
+- **Render** (Free tier available, $7/month always-on)
+- **Fly.io** (Generous free tier, $5/month)
+- **DigitalOcean** ($5-12/month)
+- **AWS EC2** (Most control, $3.50-10/month)
+
+**Quick start with Railway:**
+1. Push code to GitHub
+2. Connect to Railway
+3. Set environment variables
+4. Deploy! (Takes ~5 minutes)
+
+### 🍓 Raspberry Pi Deployment
 
 See [RASPBERRY_PI_SETUP.md](RASPBERRY_PI_SETUP.md) for detailed instructions on:
 - Setting up Raspberry Pi OS
@@ -92,6 +112,9 @@ MONITORING_FREQUENCY=60
 # Optional: Scraping limits
 MAX_PAGES_EBAY=3
 MAX_PAGES_DEPOP=2
+
+# Optional: Headless mode (true for servers, false for local debugging)
+HEADLESS=true
 ```
 
 ## File Structure
@@ -104,8 +127,11 @@ champion-monitor/
 ├── requirements.txt        # Python dependencies
 ├── setup.py               # Setup script
 ├── env_template.txt       # Environment template
-├── RASPBERRY_PI_SETUP.md  # Pi setup instructions
-├── champion_listings.db   # SQLite database (created automatically)
+├── Dockerfile            # Docker configuration for cloud deployment
+├── docker-compose.yml    # Docker Compose configuration
+├── CLOUD_DEPLOYMENT.md   # Cloud deployment guide
+├── RASPBERRY_PI_SETUP.md # Pi setup instructions
+├── champion_listings.db  # SQLite database (created automatically)
 └── champion_monitor.log   # Log file (created automatically)
 ```
 
