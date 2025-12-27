@@ -5,6 +5,7 @@
 import os
 import sqlite3
 import smtplib
+import ssl
 import schedule
 import time
 from email.mime.multipart import MIMEMultipart
@@ -170,16 +171,39 @@ class VintageClothingMonitorBot:
         html_part = MIMEText(html_content, 'html')
         msg.attach(html_part)
         
-        # Send email
+        # Send email - try multiple methods for Railway compatibility
         try:
-            server = smtplib.SMTP(smtp_server, smtp_port)
-            server.starttls()
-            server.login(email_user, email_password)
-            server.send_message(msg)
-            server.quit()
-            logger.info(f"Email sent successfully with {len(new_listings)} listings")
+            # Try port 587 with STARTTLS first
+            if smtp_port == 587:
+                try:
+                    server = smtplib.SMTP(smtp_server, smtp_port, timeout=30)
+                    server.starttls()
+                    server.login(email_user, email_password)
+                    server.send_message(msg)
+                    server.quit()
+                    logger.info(f"Email sent successfully with {len(new_listings)} listings")
+                    return
+                except (OSError, smtplib.SMTPException) as e:
+                    logger.warning(f"Port 587 failed: {e}. Trying port 465 (SSL)...")
+                    # Fall through to try port 465
+            
+            # Try port 465 with SSL (more reliable on Railway)
+            try:
+                context = ssl.create_default_context()
+                server = smtplib.SMTP_SSL(smtp_server, 465, timeout=30, context=context)
+                server.login(email_user, email_password)
+                server.send_message(msg)
+                server.quit()
+                logger.info(f"Email sent successfully with {len(new_listings)} listings (via SSL)")
+                return
+            except Exception as ssl_error:
+                logger.error(f"Port 465 (SSL) also failed: {ssl_error}")
+                raise ssl_error
+                
         except Exception as e:
-            logger.error(f"Failed to send email: {e}")
+            logger.error(f"Failed to send email after all attempts: {e}")
+            logger.error(f"SMTP Server: {smtp_server}, Port: {smtp_port}")
+            # Don't raise - allow bot to continue running even if email fails
     
     def create_html_email(self, listings):
         """Create HTML email content with listings grouped by search term - Gmail optimized"""
