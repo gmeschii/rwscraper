@@ -61,6 +61,9 @@ class EbaySeleniumScraper:
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
         
+        # Page load strategy - don't wait for all resources to load
+        chrome_options.page_load_strategy = 'eager'  # Only wait for DOM, not all resources
+        
         try:
             # Try to use local chromedriver first, fall back to system PATH
             chromedriver_path = "./chromedriver"
@@ -131,6 +134,9 @@ class EbaySeleniumScraper:
                             for chrome_attempt in range(3):
                                 try:
                                     self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                                    # Set timeouts to prevent hanging
+                                    self.driver.set_page_load_timeout(30)  # 30 second page load timeout
+                                    self.driver.implicitly_wait(5)  # 5 second implicit wait
                                     break
                                 except Exception as chrome_error:
                                     if chrome_attempt < 2:

@@ -40,6 +40,9 @@ class DepopSeleniumScraper:
 		options.add_argument('--disable-blink-features=AutomationControlled')
 		options.add_argument('--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
 		
+		# Page load strategy - don't wait for all resources to load
+		options.page_load_strategy = 'eager'  # Only wait for DOM, not all resources
+		
 		# Use headless mode in server environments (Docker, cloud platforms)
 		# Set HEADLESS=false in .env to disable headless mode for local debugging
 		if os.getenv('HEADLESS', 'true').lower() == 'true':
@@ -121,6 +124,9 @@ class DepopSeleniumScraper:
 							for chrome_attempt in range(3):
 								try:
 									self.driver = webdriver.Chrome(service=service, options=options)
+									# Set timeouts to prevent hanging
+									self.driver.set_page_load_timeout(30)  # 30 second page load timeout
+									self.driver.implicitly_wait(5)  # 5 second implicit wait
 									break
 								except Exception as chrome_error:
 									if chrome_attempt < 2:
@@ -184,10 +190,26 @@ class DepopSeleniumScraper:
 			try:
 				search_url = f"{self.base_url}/search/?q={term.replace(' ', '+')}&sort=newest"
 				logger.info(f"Navigating to: {search_url}")
-				self.driver.get(search_url)
+				try:
+					self.driver.set_page_load_timeout(30)  # 30 second timeout
+					self.driver.get(search_url)
+				except TimeoutException:
+					logger.warning(f"Page load timeout for '{term}', but continuing...")
+					# Page might still be partially loaded, continue anyway
 				
-				# Wait for page to load
-				time.sleep(5)
+				# Wait for page to load with explicit wait
+				try:
+					WebDriverWait(self.driver, 10).until(
+						EC.presence_of_element_located((By.CSS_SELECTOR, "a[href*='/products/']"))
+					)
+				except TimeoutException:
+					logger.warning(f"Timeout waiting for products to appear for '{term}', but continuing...")
+				
+				# Small delay to ensure JavaScript has executed
+				time.sleep(2)
+			except TimeoutException as e:
+				logger.warning(f"Timeout error for '{term}': {e}. Skipping this search term.")
+				break  # Skip to next term instead of reconnecting
 			except Exception as e:
 				logger.warning(f"Session error for '{term}', attempting to reconnect: {e}")
 				try:
@@ -199,8 +221,12 @@ class DepopSeleniumScraper:
 						break
 					search_url = f"{self.base_url}/search/?q={term.replace(' ', '+')}&sort=newest"
 					logger.info(f"Reconnected, navigating to: {search_url}")
-					self.driver.get(search_url)
-					time.sleep(5)
+					try:
+						self.driver.set_page_load_timeout(30)
+						self.driver.get(search_url)
+						time.sleep(2)
+					except TimeoutException:
+						logger.warning(f"Reconnect page load timeout for '{term}', but continuing...")
 				except Exception as reconnect_error:
 					logger.error(f"Failed to reconnect for '{term}': {reconnect_error}")
 					break
