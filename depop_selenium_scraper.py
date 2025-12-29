@@ -21,8 +21,22 @@ class DepopSeleniumScraper:
 	
 	def setup_driver(self):
 		options = Options()
+		# Resource-optimized options for Railway/Docker
 		options.add_argument('--no-sandbox')
 		options.add_argument('--disable-dev-shm-usage')
+		options.add_argument('--disable-gpu')
+		options.add_argument('--disable-software-rasterizer')
+		options.add_argument('--disable-extensions')
+		options.add_argument('--disable-plugins')
+		options.add_argument('--disable-images')  # Faster loading, less memory
+		options.add_argument('--disable-background-timer-throttling')
+		options.add_argument('--disable-backgrounding-occluded-windows')
+		options.add_argument('--disable-renderer-backgrounding')
+		options.add_argument('--disable-features=TranslateUI')
+		options.add_argument('--disable-ipc-flooding-protection')
+		options.add_argument('--memory-pressure-off')
+		
+		# Stealth options
 		options.add_argument('--disable-blink-features=AutomationControlled')
 		options.add_argument('--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
 		
@@ -50,40 +64,80 @@ class DepopSeleniumScraper:
 			except Exception:
 				# Fall back to ChromeDriverManager if local driver fails
 				logger.info("Local chromedriver not found, using ChromeDriverManager")
-				driver_path = ChromeDriverManager().install()
-				# ChromeDriverManager may return wrong file (e.g., THIRD_PARTY_NOTICES.chromedriver)
-				# Find the actual chromedriver executable
-				if os.path.isfile(driver_path) and "THIRD_PARTY" in driver_path:
-					# Wrong file returned, look in the same directory and subdirectories
-					driver_dir = os.path.dirname(driver_path)
-					possible_paths = [
-						os.path.join(driver_dir, "chromedriver"),
-						os.path.join(driver_dir, "chromedriver-linux64", "chromedriver"),
-						os.path.join(driver_dir, "chromedriver-mac-arm64", "chromedriver"),
-						os.path.join(driver_dir, "chromedriver-mac-x64", "chromedriver"),
-					]
-					for path in possible_paths:
-						if os.path.exists(path):
-							driver_path = path
-							# Ensure executable permissions
-							os.chmod(path, 0o755)
-							break
-				elif os.path.isdir(driver_path):
-					# Look for chromedriver in the directory
-					possible_paths = [
-						os.path.join(driver_path, "chromedriver"),
-						os.path.join(driver_path, "chromedriver-linux64", "chromedriver"),
-						os.path.join(driver_path, "chromedriver-mac-arm64", "chromedriver"),
-						os.path.join(driver_path, "chromedriver-mac-x64", "chromedriver"),
-					]
-					for path in possible_paths:
-						if os.path.exists(path):
-							driver_path = path
-							# Ensure executable permissions
-							os.chmod(path, 0o755)
-							break
-				service = Service(driver_path)
-				self.driver = webdriver.Chrome(service=service, options=options)
+				import time
+				# Add retry logic for resource-constrained environments
+				max_retries = 3
+				driver_path = None
+				for attempt in range(max_retries):
+					try:
+						# Try to get ChromeDriver
+						try:
+							driver_path = ChromeDriverManager().install()
+						except Exception as e:
+							logger.warning(f"ChromeDriverManager failed (attempt {attempt + 1}/{max_retries}): {e}")
+							if attempt < max_retries - 1:
+								time.sleep(5)  # Wait before retry
+								continue
+							# Last resort: try to use system chromedriver
+							driver_path = "chromedriver"
+							logger.info("Using system chromedriver as fallback")
+						
+						# ChromeDriverManager may return wrong file (e.g., THIRD_PARTY_NOTICES.chromedriver)
+						# Find the actual chromedriver executable
+						if driver_path and os.path.isfile(driver_path) and "THIRD_PARTY" in driver_path:
+							# Wrong file returned, look in the same directory and subdirectories
+							driver_dir = os.path.dirname(driver_path)
+							possible_paths = [
+								os.path.join(driver_dir, "chromedriver"),
+								os.path.join(driver_dir, "chromedriver-linux64", "chromedriver"),
+								os.path.join(driver_dir, "chromedriver-mac-arm64", "chromedriver"),
+								os.path.join(driver_dir, "chromedriver-mac-x64", "chromedriver"),
+							]
+							for path in possible_paths:
+								if os.path.exists(path):
+									driver_path = path
+									# Ensure executable permissions
+									os.chmod(path, 0o755)
+									break
+						elif driver_path and os.path.isdir(driver_path):
+							# Look for chromedriver in the directory
+							possible_paths = [
+								os.path.join(driver_path, "chromedriver"),
+								os.path.join(driver_path, "chromedriver-linux64", "chromedriver"),
+								os.path.join(driver_path, "chromedriver-mac-arm64", "chromedriver"),
+								os.path.join(driver_path, "chromedriver-mac-x64", "chromedriver"),
+							]
+							for path in possible_paths:
+								if os.path.exists(path):
+									driver_path = path
+									# Ensure executable permissions
+									os.chmod(path, 0o755)
+									break
+						
+						# Try to create the driver with retries
+						if driver_path:
+							service = Service(driver_path)
+							# Add timeout and retry for Chrome startup
+							for chrome_attempt in range(3):
+								try:
+									self.driver = webdriver.Chrome(service=service, options=options)
+									break
+								except Exception as chrome_error:
+									if chrome_attempt < 2:
+										logger.warning(f"Chrome startup failed (attempt {chrome_attempt + 1}/3): {chrome_error}. Retrying...")
+										time.sleep(3)
+									else:
+										raise
+						else:
+							raise Exception("Could not find chromedriver executable")
+						break
+					except Exception as e:
+						if attempt < max_retries - 1:
+							logger.warning(f"ChromeDriver setup failed (attempt {attempt + 1}/{max_retries}): {e}")
+							time.sleep(5)
+						else:
+							logger.error(f"Failed to initialize Chrome driver after {max_retries} attempts: {e}")
+							raise
 			self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 			self.driver.set_window_size(1440, 900)
 			logger.info("Depop Chrome driver initialized successfully")
