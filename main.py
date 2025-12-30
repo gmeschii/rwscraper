@@ -145,102 +145,151 @@ class VintageClothingMonitorBot:
             conn.close()
     
     def send_email_notification(self, new_listings):
-        """Send email notification with new listings"""
+        """Send email notification with new listings - splits into batches of ~50"""
         if not new_listings:
             logger.info("No new listings to send")
             return
         
-        # Try Resend API first (works with Railway network restrictions)
-        resend_api_key = os.getenv('RESEND_API_KEY')
-        recipient_email = os.getenv('RECIPIENT_EMAIL')
-        from_email = os.getenv('RESEND_FROM_EMAIL', os.getenv('EMAIL_USER', 'notifications@resend.dev'))
+        # Split listings into batches of ~50 per email
+        batch_size = 50
+        total_batches = (len(new_listings) + batch_size - 1) // batch_size
         
-        if resend_api_key and recipient_email:
-            try:
-                self._send_via_resend(new_listings, resend_api_key, from_email, recipient_email)
-                return
-            except Exception as e:
-                logger.warning(f"Resend API failed: {e}. Falling back to SMTP...")
+        logger.info(f"Sending {len(new_listings)} listings in {total_batches} email(s) ({batch_size} per email)")
         
-        # Fallback to SMTP (may not work on Railway)
-        smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
-        smtp_port = int(os.getenv('SMTP_PORT', '587'))
-        email_user = os.getenv('EMAIL_USER')
-        email_password = os.getenv('EMAIL_PASSWORD')
-        
-        if not all([email_user, email_password, recipient_email]):
-            logger.error("Email configuration missing. Please set RESEND_API_KEY and RECIPIENT_EMAIL (or EMAIL_USER, EMAIL_PASSWORD, and RECIPIENT_EMAIL)")
-            return
-        
-        # Create email message
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = f"New Vintage Clothing Listings - {len(new_listings)} items"
-        msg['From'] = email_user
-        msg['To'] = recipient_email
-        
-        # Create HTML content
-        html_content = self.create_html_email(new_listings)
-        html_part = MIMEText(html_content, 'html')
-        msg.attach(html_part)
-        
-        # Send email - try multiple methods for Railway compatibility
-        try:
-            # Try port 587 with STARTTLS first
-            if smtp_port == 587:
+        for batch_num in range(total_batches):
+            start_idx = batch_num * batch_size
+            end_idx = min(start_idx + batch_size, len(new_listings))
+            batch = new_listings[start_idx:end_idx]
+            
+            batch_info = f" (Batch {batch_num + 1}/{total_batches})" if total_batches > 1 else ""
+            logger.info(f"Sending email{batch_info} with {len(batch)} listings...")
+            
+            # Try Resend API first (works with Railway network restrictions)
+            resend_api_key = os.getenv('RESEND_API_KEY')
+            recipient_email = os.getenv('RECIPIENT_EMAIL')
+            from_email = os.getenv('RESEND_FROM_EMAIL', 'onboarding@resend.dev')
+            
+            if resend_api_key and recipient_email:
                 try:
-                    server = smtplib.SMTP(smtp_server, smtp_port, timeout=30)
-                    server.starttls()
+                    self._send_via_resend(batch, resend_api_key, from_email, recipient_email, batch_num + 1, total_batches)
+                    logger.info(f"Email batch {batch_num + 1}/{total_batches} sent successfully")
+                    # Small delay between batches to avoid rate limiting
+                    if batch_num < total_batches - 1:
+                        time.sleep(2)
+                    continue
+                except Exception as e:
+                    logger.error(f"Resend API failed for batch {batch_num + 1}: {e}")
+                    logger.error(f"Response details: {str(e)}")
+                    # Try SMTP fallback for this batch
+        
+            # Fallback to SMTP (may not work on Railway)
+            smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+            smtp_port = int(os.getenv('SMTP_PORT', '587'))
+            email_user = os.getenv('EMAIL_USER')
+            email_password = os.getenv('EMAIL_PASSWORD')
+            
+            if not all([email_user, email_password, recipient_email]):
+                logger.error(f"Email configuration missing for batch {batch_num + 1}. Skipping batch.")
+                continue
+            
+            # Create email message
+            msg = MIMEMultipart('alternative')
+            subject = f"New Vintage Clothing Listings - {len(batch)} items"
+            if total_batches > 1:
+                subject += f" (Part {batch_num + 1}/{total_batches})"
+            msg['Subject'] = subject
+            msg['From'] = email_user
+            msg['To'] = recipient_email
+            
+            # Create HTML content
+            html_content = self.create_html_email(batch, batch_num + 1, total_batches)
+            html_part = MIMEText(html_content, 'html')
+            msg.attach(html_part)
+            
+            # Send email - try multiple methods for Railway compatibility
+            try:
+                # Try port 587 with STARTTLS first
+                if smtp_port == 587:
+                    try:
+                        server = smtplib.SMTP(smtp_server, smtp_port, timeout=30)
+                        server.starttls()
+                        server.login(email_user, email_password)
+                        server.send_message(msg)
+                        server.quit()
+                        logger.info(f"Email batch {batch_num + 1}/{total_batches} sent successfully via SMTP")
+                        if batch_num < total_batches - 1:
+                            time.sleep(2)
+                        continue
+                    except (OSError, smtplib.SMTPException) as e:
+                        logger.warning(f"Port 587 failed: {e}. Trying port 465 (SSL)...")
+                        # Fall through to try port 465
+                
+                # Try port 465 with SSL (more reliable on Railway)
+                try:
+                    context = ssl.create_default_context()
+                    server = smtplib.SMTP_SSL(smtp_server, 465, timeout=30, context=context)
                     server.login(email_user, email_password)
                     server.send_message(msg)
                     server.quit()
-                    logger.info(f"Email sent successfully with {len(new_listings)} listings")
-                    return
-                except (OSError, smtplib.SMTPException) as e:
-                    logger.warning(f"Port 587 failed: {e}. Trying port 465 (SSL)...")
-                    # Fall through to try port 465
-            
-            # Try port 465 with SSL (more reliable on Railway)
-            try:
-                context = ssl.create_default_context()
-                server = smtplib.SMTP_SSL(smtp_server, 465, timeout=30, context=context)
-                server.login(email_user, email_password)
-                server.send_message(msg)
-                server.quit()
-                logger.info(f"Email sent successfully with {len(new_listings)} listings (via SSL)")
-                return
-            except Exception as ssl_error:
-                logger.error(f"Port 465 (SSL) also failed: {ssl_error}")
-                raise ssl_error
-                
-        except Exception as e:
-            logger.error(f"Failed to send email after all attempts: {e}")
-            logger.error(f"SMTP Server: {smtp_server}, Port: {smtp_port}")
-            logger.error("Consider using Resend API (RESEND_API_KEY) which works better with Railway")
-            # Don't raise - allow bot to continue running even if email fails
+                    logger.info(f"Email batch {batch_num + 1}/{total_batches} sent successfully via SMTP (SSL)")
+                    if batch_num < total_batches - 1:
+                        time.sleep(2)
+                    continue
+                except Exception as ssl_error:
+                    logger.error(f"Port 465 (SSL) also failed for batch {batch_num + 1}: {ssl_error}")
+                    
+            except Exception as e:
+                logger.error(f"Failed to send email batch {batch_num + 1} after all attempts: {e}")
+                logger.error(f"SMTP Server: {smtp_server}, Port: {smtp_port}")
+                logger.error("Consider using Resend API (RESEND_API_KEY) which works better with Railway")
+                # Continue to next batch even if this one failed
     
-    def _send_via_resend(self, new_listings, api_key, from_email, recipient_email):
+    def _send_via_resend(self, new_listings, api_key, from_email, recipient_email, batch_num=1, total_batches=1):
         """Send email using Resend API (works with Railway network restrictions)"""
-        html_content = self.create_html_email(new_listings)
+        html_content = self.create_html_email(new_listings, batch_num, total_batches)
         
         url = "https://api.resend.com/emails"
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
+        
+        subject = f"New Vintage Clothing Listings - {len(new_listings)} items"
+        if total_batches > 1:
+            subject += f" (Part {batch_num}/{total_batches})"
+        
         payload = {
             "from": from_email,
             "to": [recipient_email],
-            "subject": f"New Vintage Clothing Listings - {len(new_listings)} items",
+            "subject": subject,
             "html": html_content
         }
         
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
-        response.raise_for_status()
-        
-        logger.info(f"Email sent successfully via Resend API with {len(new_listings)} listings")
-        return response.json()
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            
+            # Log response details for debugging
+            logger.debug(f"Resend API response status: {response.status_code}")
+            logger.debug(f"Resend API response headers: {dict(response.headers)}")
+            
+            # Check response
+            if response.status_code != 200:
+                error_detail = response.text
+                logger.error(f"Resend API returned status {response.status_code}: {error_detail}")
+                response.raise_for_status()
+            
+            response_data = response.json()
+            logger.info(f"Email sent successfully via Resend API. Response: {response_data}")
+            return response_data
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Resend API request failed: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"Response status: {e.response.status_code}")
+                logger.error(f"Response body: {e.response.text}")
+            raise
     
-    def create_html_email(self, listings):
+    def create_html_email(self, listings, batch_num=1, total_batches=1):
         """Create HTML email content with listings grouped by search term - Gmail optimized"""
         # Group listings by search term
         grouped_listings = {}
@@ -250,9 +299,9 @@ class VintageClothingMonitorBot:
                 grouped_listings[search_term] = []
             grouped_listings[search_term].append(listing)
         
-        # Limit total listings to prevent Gmail truncation (max 50 listings)
+        # Show all listings in this batch (already limited to ~50)
         total_shown = 0
-        max_listings = 50
+        max_listings = len(listings)  # Show all in batch
         
         html = f"""
         <!DOCTYPE html>
@@ -280,6 +329,7 @@ class VintageClothingMonitorBot:
             <div class="header">
                 <h2 style="margin: 0;">🏆 New Vintage Clothing Listings</h2>
                 <p style="margin: 5px 0 0 0;">Found <strong>{len(listings)}</strong> new listings across <strong>{len(grouped_listings)}</strong> search terms</p>
+                {f'<p style="margin: 5px 0 0 0; font-size: 12px;">📧 Email {batch_num} of {total_batches}</p>' if total_batches > 1 else ''}
             </div>
         """
         
@@ -298,7 +348,7 @@ class VintageClothingMonitorBot:
                 <div class="search-header">🔍 {search_term.title()} ({len(term_listings)} listings)</div>
             """
             
-            for listing in term_listings[:10]:  # Limit to 10 per search term
+            for listing in term_listings:  # Show all listings in this batch
                 if total_shown >= max_listings:
                     break
                     
