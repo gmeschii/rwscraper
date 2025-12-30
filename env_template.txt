@@ -1,12 +1,15 @@
 # Environment Configuration Template
 # Copy this file to .env and fill in your actual values
 
-# Email Configuration
-EMAIL_USER=your_email@gmail.com
-EMAIL_PASSWORD=your_app_password
+# Email Configuration - Resend API (Recommended for Railway)
+# Get your API key from https://resend.com/api-keys
+RESEND_API_KEY=re_your_api_key_here
+RESEND_FROM_EMAIL=onboarding@resend.dev
 RECIPIENT_EMAIL=your_email@gmail.com
 
-# SMTP Server Configuration (Gmail example)
+# Email Configuration - SMTP (Fallback, may not work on Railway)
+EMAIL_USER=your_email@gmail.com
+EMAIL_PASSWORD=your_app_password
 SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
 
