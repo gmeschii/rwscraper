@@ -27,6 +27,8 @@ Resend is an email API service that uses HTTP (not SMTP), so it works perfectly 
 3. Name it (e.g., "Vintage Bot")
 4. Copy the API key (starts with `re_`)
 
+re_Kr6BASSm_LRAKFkfSH3a9yYFGA7NJVJeG
+
 ### 3. Verify Your Domain (Optional but Recommended)
 For better deliverability:
 1. Go to https://resend.com/domains
