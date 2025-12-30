@@ -8,6 +8,7 @@ import smtplib
 import ssl
 import schedule
 import time
+import requests
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
@@ -149,15 +150,26 @@ class VintageClothingMonitorBot:
             logger.info("No new listings to send")
             return
         
-        # Email configuration
+        # Try Resend API first (works with Railway network restrictions)
+        resend_api_key = os.getenv('RESEND_API_KEY')
+        recipient_email = os.getenv('RECIPIENT_EMAIL')
+        from_email = os.getenv('RESEND_FROM_EMAIL', os.getenv('EMAIL_USER', 'notifications@resend.dev'))
+        
+        if resend_api_key and recipient_email:
+            try:
+                self._send_via_resend(new_listings, resend_api_key, from_email, recipient_email)
+                return
+            except Exception as e:
+                logger.warning(f"Resend API failed: {e}. Falling back to SMTP...")
+        
+        # Fallback to SMTP (may not work on Railway)
         smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
         smtp_port = int(os.getenv('SMTP_PORT', '587'))
         email_user = os.getenv('EMAIL_USER')
         email_password = os.getenv('EMAIL_PASSWORD')
-        recipient_email = os.getenv('RECIPIENT_EMAIL')
         
         if not all([email_user, email_password, recipient_email]):
-            logger.error("Email configuration missing. Please set EMAIL_USER, EMAIL_PASSWORD, and RECIPIENT_EMAIL")
+            logger.error("Email configuration missing. Please set RESEND_API_KEY and RECIPIENT_EMAIL (or EMAIL_USER, EMAIL_PASSWORD, and RECIPIENT_EMAIL)")
             return
         
         # Create email message
@@ -203,7 +215,30 @@ class VintageClothingMonitorBot:
         except Exception as e:
             logger.error(f"Failed to send email after all attempts: {e}")
             logger.error(f"SMTP Server: {smtp_server}, Port: {smtp_port}")
+            logger.error("Consider using Resend API (RESEND_API_KEY) which works better with Railway")
             # Don't raise - allow bot to continue running even if email fails
+    
+    def _send_via_resend(self, new_listings, api_key, from_email, recipient_email):
+        """Send email using Resend API (works with Railway network restrictions)"""
+        html_content = self.create_html_email(new_listings)
+        
+        url = "https://api.resend.com/emails"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "from": from_email,
+            "to": [recipient_email],
+            "subject": f"New Vintage Clothing Listings - {len(new_listings)} items",
+            "html": html_content
+        }
+        
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        response.raise_for_status()
+        
+        logger.info(f"Email sent successfully via Resend API with {len(new_listings)} listings")
+        return response.json()
     
     def create_html_email(self, listings):
         """Create HTML email content with listings grouped by search term - Gmail optimized"""
