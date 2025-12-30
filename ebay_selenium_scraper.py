@@ -266,14 +266,26 @@ class EbaySeleniumScraper:
                 logger.warning("No listing items found with any selector")
                 return []
             
-            for item in items:
+            # Limit items to process to prevent hanging (process first 50)
+            max_items = 50
+            items_to_process = items[:max_items] if len(items) > max_items else items
+            if len(items) > max_items:
+                logger.info(f"Processing first {max_items} of {len(items)} items to prevent timeout")
+            
+            # Process items with progress logging
+            for idx, item in enumerate(items_to_process, 1):
                 try:
+                    if idx % 10 == 0:
+                        logger.info(f"Processing item {idx}/{len(items_to_process)}...")
+                    
                     listing_data = self._extract_item_data_selenium(item, search_term)
                     if listing_data:
                         listings.append(listing_data)
                 except Exception as e:
-                    logger.debug(f"Error extracting item data: {e}")
+                    logger.debug(f"Error extracting item {idx} data: {e}")
                     continue
+            
+            logger.info(f"Extracted {len(listings)} listings from {len(items_to_process)} items")
                     
         except Exception as e:
             logger.error(f"Error extracting listings: {e}")
@@ -294,6 +306,7 @@ class EbaySeleniumScraper:
             
             for selector in link_selectors:
                 try:
+                    # Use shorter timeout for element finding
                     link_elem = item.find_element(By.CSS_SELECTOR, selector)
                     href = link_elem.get_attribute('href')
                     
@@ -303,7 +316,7 @@ class EbaySeleniumScraper:
                         if id_match:
                             listing_id = id_match.group(1)
                             break
-                except NoSuchElementException:
+                except (NoSuchElementException, Exception):
                     continue
             
             if not listing_id:
@@ -326,9 +339,9 @@ class EbaySeleniumScraper:
                 try:
                     title_elem = item.find_element(By.CSS_SELECTOR, selector)
                     title = title_elem.text.strip()
-                    if title:
+                    if title and title not in ["Shop on eBay", "Daily Deals"]:
                         break
-                except NoSuchElementException:
+                except (NoSuchElementException, Exception):
                     continue
             
             if not title:
@@ -354,10 +367,10 @@ class EbaySeleniumScraper:
                 try:
                     price_elem = item.find_element(By.CSS_SELECTOR, selector)
                     price_text = price_elem.text.strip()
-                    if price_text and '$' in price_text:
+                    if price_text and ('$' in price_text or 'USD' in price_text):
                         price = price_text
                         break
-                except NoSuchElementException:
+                except (NoSuchElementException, Exception):
                     continue
             
             # Get image - try multiple selectors
@@ -382,7 +395,7 @@ class EbaySeleniumScraper:
                         else:
                             image_url = src
                         break
-                except NoSuchElementException:
+                except (NoSuchElementException, Exception):
                     continue
             
             # Get listing URL
