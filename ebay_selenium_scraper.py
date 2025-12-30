@@ -136,7 +136,7 @@ class EbaySeleniumScraper:
                                     self.driver = webdriver.Chrome(service=service, options=chrome_options)
                                     # Set timeouts to prevent hanging
                                     self.driver.set_page_load_timeout(30)  # 30 second page load timeout
-                                    self.driver.implicitly_wait(5)  # 5 second implicit wait
+                                    self.driver.implicitly_wait(2)  # 2 second implicit wait (reduced for speed)
                                     break
                                 except Exception as chrome_error:
                                     if chrome_attempt < 2:
@@ -236,21 +236,108 @@ class EbaySeleniumScraper:
         return listings
     
     def _extract_listings_selenium(self, search_term):
-        """Extract listings using Selenium"""
+        """Extract listings using Selenium - optimized for speed"""
         listings = []
         
         try:
-            # Try multiple selectors to find listing items
-            selectors = [
-                "li.s-card",  # eBay's current structure
-                "li[class*='s-card']",
-                "div[class*='s-item']",
-                "div.s-item",
-                "li.s-item",
-                "div[data-view]",
-                "div[data-testid]"
-            ]
+            # Use JavaScript to extract all data at once (much faster than find_element)
+            script = """
+            var items = document.querySelectorAll('li.s-card, li[class*="s-card"], div[class*="s-item"], div.s-item, li.s-item');
+            var results = [];
+            var maxItems = Math.min(items.length, 50);
             
+            for (var i = 0; i < maxItems; i++) {
+                var item = items[i];
+                try {
+                    // Get link and ID
+                    var link = item.querySelector('a.s-item__link, a[class*="s-item__link"], a[href*="/itm/"]');
+                    if (!link) continue;
+                    var href = link.getAttribute('href') || '';
+                    var idMatch = href.match(/\\/itm\\/(\\d+)/);
+                    if (!idMatch) continue;
+                    var listingId = idMatch[1];
+                    
+                    // Get title
+                    var titleElem = item.querySelector('.s-card__title, h3.s-item__title, h3[class*="s-item__title"], h3, h2, a.s-item__link');
+                    var title = titleElem ? titleElem.textContent.trim() : '';
+                    if (!title || title.includes('Shop on eBay') || title.includes('Daily Deals')) continue;
+                    
+                    // Get price
+                    var priceElem = item.querySelector('.s-card__price, span.s-item__price, span[class*="s-item__price"], span[class*="price"]');
+                    var price = priceElem ? priceElem.textContent.trim() : 'Price not available';
+                    
+                    // Get image
+                    var imgElem = item.querySelector('img.s-item__image, img[class*="s-item__image"], img');
+                    var imageUrl = '';
+                    if (imgElem) {
+                        imageUrl = imgElem.getAttribute('src') || imgElem.getAttribute('data-src') || '';
+                        if (imageUrl.startsWith('//')) imageUrl = 'https:' + imageUrl;
+                        else if (imageUrl.startsWith('/')) imageUrl = 'https://i.ebayimg.com' + imageUrl;
+                    }
+                    
+                    results.push({
+                        id: listingId,
+                        title: title,
+                        price: price,
+                        url: href,
+                        image: imageUrl
+                    });
+                } catch(e) {
+                    continue;
+                }
+            }
+            return results;
+            """
+            
+            # Temporarily disable implicit wait for faster execution
+            self.driver.implicitly_wait(0)
+            try:
+                items_data = self.driver.execute_script(script)
+            finally:
+                self.driver.implicitly_wait(2)  # Restore to 2 seconds
+            
+            if not items_data:
+                logger.warning("No listing items found")
+                return []
+            
+            logger.info(f"Extracted {len(items_data)} items via JavaScript")
+            
+            # Process the extracted data
+            for item_data in items_data:
+                try:
+                    # Filter items based on search term
+                    if not self._matches_search_term(item_data.get('title', '').lower(), search_term):
+                        continue
+                    
+                    listings.append({
+                        'listing_id': item_data['id'],
+                        'platform': 'eBay',
+                        'title': item_data['title'],
+                        'price': item_data['price'],
+                        'url': item_data['url'],
+                        'image_url': item_data['image'],
+                        'search_term': search_term
+                    })
+                except Exception as e:
+                    logger.debug(f"Error processing item data: {e}")
+                    continue
+            
+            logger.info(f"Found {len(listings)} listings for '{search_term}'")
+                    
+        except Exception as e:
+            logger.error(f"Error extracting listings: {e}")
+            # Fallback to slower method if JavaScript fails
+            logger.info("Falling back to slower extraction method...")
+            return self._extract_listings_selenium_fallback(search_term)
+        
+        return listings
+    
+    def _extract_listings_selenium_fallback(self, search_term):
+        """Fallback extraction method using find_element (slower but more reliable)"""
+        listings = []
+        
+        try:
+            selectors = ["li.s-card", "li[class*='s-card']", "div[class*='s-item']", "div.s-item", "li.s-item"]
             items = []
             for selector in selectors:
                 try:
@@ -258,37 +345,25 @@ class EbaySeleniumScraper:
                     if items:
                         logger.info(f"Found {len(items)} items with selector: {selector}")
                         break
-                except Exception as e:
-                    logger.debug(f"Selector {selector} failed: {e}")
+                except Exception:
                     continue
             
             if not items:
-                logger.warning("No listing items found with any selector")
                 return []
             
-            # Limit items to process to prevent hanging (process first 50)
             max_items = 50
             items_to_process = items[:max_items] if len(items) > max_items else items
-            if len(items) > max_items:
-                logger.info(f"Processing first {max_items} of {len(items)} items to prevent timeout")
             
-            # Process items with progress logging
-            for idx, item in enumerate(items_to_process, 1):
+            for item in items_to_process:
                 try:
-                    if idx % 10 == 0:
-                        logger.info(f"Processing item {idx}/{len(items_to_process)}...")
-                    
                     listing_data = self._extract_item_data_selenium(item, search_term)
                     if listing_data:
                         listings.append(listing_data)
-                except Exception as e:
-                    logger.debug(f"Error extracting item {idx} data: {e}")
+                except Exception:
                     continue
-            
-            logger.info(f"Extracted {len(listings)} listings from {len(items_to_process)} items")
                     
         except Exception as e:
-            logger.error(f"Error extracting listings: {e}")
+            logger.error(f"Error in fallback extraction: {e}")
         
         return listings
     
