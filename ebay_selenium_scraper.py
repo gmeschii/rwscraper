@@ -178,18 +178,49 @@ class EbaySeleniumScraper:
         
         all_listings = []
         
-        for search_term in search_terms:
+        for i, search_term in enumerate(search_terms):
             logger.info(f"Searching eBay with Selenium for: {search_term}")
             
             try:
                 listings = self._search_single_term_selenium(search_term, max_pages)
                 all_listings.extend(listings)
                 
+                # Restart driver every 5 searches to prevent tab crashes (memory issues)
+                if (i + 1) % 5 == 0 and (i + 1) < len(search_terms):
+                    logger.info("Restarting eBay driver to prevent tab crashes")
+                    self.close()
+                    time.sleep(3)
+                    self.setup_driver()
+                    if self.driver is None:
+                        logger.error("Failed to restart eBay driver")
+                        break
+                
                 # Be respectful - add delay between searches
                 time.sleep(3)
                 
             except Exception as e:
-                logger.error(f"Error searching for '{search_term}': {e}")
+                error_msg = str(e)
+                # Check if it's a tab crash
+                if 'tab crashed' in error_msg.lower() or 'session' in error_msg.lower():
+                    logger.warning(f"Tab crashed for '{search_term}'. Restarting driver...")
+                    try:
+                        self.close()
+                        time.sleep(3)
+                        self.setup_driver()
+                        if self.driver is None:
+                            logger.error("Failed to restart driver after tab crash")
+                            break
+                        # Retry the search after restart
+                        try:
+                            listings = self._search_single_term_selenium(search_term, max_pages)
+                            all_listings.extend(listings)
+                        except Exception as retry_error:
+                            logger.error(f"Retry failed for '{search_term}': {retry_error}")
+                    except Exception as restart_error:
+                        logger.error(f"Failed to restart driver: {restart_error}")
+                        break
+                else:
+                    logger.error(f"Error searching for '{search_term}': {e}")
                 continue
         
         logger.info(f"Found {len(all_listings)} total eBay listings with Selenium")
@@ -200,11 +231,23 @@ class EbaySeleniumScraper:
         listings = []
         
         try:
+            # Check if driver is still valid
+            if not self.driver:
+                logger.warning("Driver is None, cannot search")
+                return []
+            
             # Navigate to eBay search
             search_url = f"{self.base_url}/sch/i.html?_nkw={search_term.replace(' ', '+')}&_sop=10"
             logger.info(f"Navigating to: {search_url}")
             
-            self.driver.get(search_url)
+            try:
+                self.driver.get(search_url)
+            except Exception as nav_error:
+                error_msg = str(nav_error).lower()
+                if 'tab crashed' in error_msg or 'session' in error_msg:
+                    logger.warning(f"Tab crashed during navigation for '{search_term}'")
+                    raise  # Re-raise to trigger restart in search_listings
+                raise
             
             # Wait for page to load and JavaScript to execute
             time.sleep(5)
@@ -231,6 +274,10 @@ class EbaySeleniumScraper:
         except TimeoutException:
             logger.warning(f"Timeout waiting for page to load for '{search_term}'")
         except Exception as e:
+            error_msg = str(e).lower()
+            if 'tab crashed' in error_msg or 'session' in error_msg:
+                logger.error(f"Tab crashed in Selenium search for '{search_term}': {e}")
+                raise  # Re-raise to trigger restart
             logger.error(f"Error in Selenium search for '{search_term}': {e}")
         
         return listings

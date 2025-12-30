@@ -352,8 +352,23 @@ class VintageClothingMonitorBot:
                 if total_shown >= max_listings:
                     break
                     
-                # Handle missing images
-                img_html = f'<img src="{listing["image_url"]}" alt="Listing Image" onerror="this.parentNode.innerHTML=\'<div class=\\"no-image\\">No Image</div>\'">' if listing['image_url'] else '<div class="no-image">No Image</div>'
+                # Handle missing images - ensure absolute URLs and proper email client compatibility
+                image_url = listing.get('image_url', '')
+                if image_url:
+                    # Ensure absolute URL
+                    if image_url.startswith('//'):
+                        image_url = 'https:' + image_url
+                    elif image_url.startswith('/'):
+                        # Relative URL - try to make it absolute based on platform
+                        if listing['platform'].lower() == 'ebay':
+                            image_url = 'https://i.ebayimg.com' + image_url
+                        elif listing['platform'].lower() == 'depop':
+                            image_url = 'https://media.depop.com' + image_url
+                    
+                    # Use img tag with proper attributes for email clients
+                    img_html = f'<img src="{image_url}" alt="Listing Image" style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px; display: block;" border="0">'
+                else:
+                    img_html = '<div class="no-image">No Image</div>'
                 
                 html += f"""
                 <div class="listing">
