@@ -9,6 +9,7 @@ import ssl
 import schedule
 import time
 import requests
+import re
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
@@ -370,6 +371,39 @@ class VintageClothingMonitorBot:
                 else:
                     img_html = '<div class="no-image">No Image</div>'
                 
+                # Create deep link for mobile apps
+                listing_url = listing.get('url', '')
+                deep_link_url = None
+                web_url = listing_url
+                
+                # Convert eBay URLs to deep links for mobile app
+                if listing['platform'].lower() == 'ebay':
+                    # Extract item ID from eBay URL (format: /itm/ITEM_ID)
+                    item_id_match = re.search(r'/itm/(\d+)', listing_url)
+                    if item_id_match:
+                        item_id = item_id_match.group(1)
+                        # Use eBay deep link (works on iOS and Android)
+                        deep_link_url = f"ebay://item/view?id={item_id}"
+                        # Fallback web URL for desktop/if app not installed
+                        web_url = f"https://www.ebay.com/itm/{item_id}"
+                elif listing['platform'].lower() == 'depop':
+                    # Extract product slug from Depop URL
+                    product_match = re.search(r'/products/([^/?]+)', listing_url)
+                    if product_match:
+                        product_slug = product_match.group(1)
+                        # Use Depop deep link
+                        deep_link_url = f"depop://product/{product_slug}"
+                        web_url = listing_url
+                
+                # Create link that uses deep link on mobile, web URL as fallback
+                if deep_link_url:
+                    # Use deep link - mobile email clients will open the app
+                    # If app not installed, it will fall back to web URL
+                    link_html = f'<a href="{deep_link_url}" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
+                else:
+                    # Fallback to regular web link
+                    link_html = f'<a href="{listing_url}" target="_blank" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
+                
                 html += f"""
                 <div class="listing">
                     {img_html}
@@ -378,7 +412,7 @@ class VintageClothingMonitorBot:
                         <div class="title">{listing['title']}</div>
                         <div class="price">{listing['price']}</div>
                         <div class="url">
-                            <a href="{listing['url']}" target="_blank">View Listing →</a>
+                            {link_html}
                         </div>
                     </div>
                 </div>
