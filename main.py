@@ -371,36 +371,24 @@ class VintageClothingMonitorBot:
                 else:
                     img_html = '<div class="no-image">No Image</div>'
                 
-                # Create mobile-optimized links that open in apps
+                # Create mobile-optimized links that work better with email clients
                 listing_url = listing.get('url', '')
-                mobile_url = listing_url
                 
-                # Convert eBay URLs to mobile web URLs that auto-prompt for app
+                # For eBay: Use mobile web URL with m.ebay.com which handles app opening better
                 if listing['platform'].lower() == 'ebay':
                     # Extract item ID from eBay URL (format: /itm/ITEM_ID)
                     item_id_match = re.search(r'/itm/(\d+)', listing_url)
                     if item_id_match:
                         item_id = item_id_match.group(1)
-                        # Use mobile web URL - eBay's mobile site will prompt to open in app
-                        # This works better than deep links in email clients
-                        mobile_url = f"https://www.ebay.com/itm/{item_id}"
-                        # Also add the correct deep link format as a data attribute for better compatibility
-                        deep_link = f"ebay://com.ebay.mobile/ebay/link/?nav=item.view&id={item_id}"
-                        # Use mobile web URL (works better in email) with deep link as fallback
-                        link_html = f'<a href="{mobile_url}" data-deep-link="{deep_link}" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
+                        # Use mobile subdomain - better app detection and opening
+                        # The mobile site will show "Open in App" banner and handle deep linking
+                        mobile_url = f"https://m.ebay.com/itm/{item_id}"
+                        link_html = f'<a href="{mobile_url}" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
                     else:
                         link_html = f'<a href="{listing_url}" target="_blank" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
                 elif listing['platform'].lower() == 'depop':
-                    # Extract product slug from Depop URL
-                    product_match = re.search(r'/products/([^/?]+)', listing_url)
-                    if product_match:
-                        product_slug = product_match.group(1)
-                        # Use mobile web URL - Depop's mobile site will prompt to open in app
-                        mobile_url = listing_url
-                        deep_link = f"depop://product/{product_slug}"
-                        link_html = f'<a href="{mobile_url}" data-deep-link="{deep_link}" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
-                    else:
-                        link_html = f'<a href="{listing_url}" target="_blank" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
+                    # Depop mobile URLs already work well
+                    link_html = f'<a href="{listing_url}" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
                 else:
                     link_html = f'<a href="{listing_url}" target="_blank" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
                 
