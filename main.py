@@ -182,7 +182,7 @@ class VintageClothingMonitorBot:
                     logger.error(f"Resend API failed for batch {batch_num + 1}: {e}")
                     logger.error(f"Response details: {str(e)}")
                     # Try SMTP fallback for this batch
-        
+            
             # Fallback to SMTP (may not work on Railway)
             smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
             smtp_port = int(os.getenv('SMTP_PORT', '587'))
@@ -374,31 +374,24 @@ class VintageClothingMonitorBot:
                 # Create links optimized for mobile app opening
                 listing_url = listing.get('url', '')
                 
-                # For eBay: Try direct deep link (may be blocked by email clients, but worth trying)
+                # Create links - email clients often block deep links, so we'll use mobile web URLs
+                # Mobile web URLs will show "Open in App" banners that work better than deep links
+                listing_url = listing.get('url', '')
+                
                 if listing['platform'].lower() == 'ebay':
                     # Extract item ID from eBay URL (format: /itm/ITEM_ID)
                     item_id_match = re.search(r'/itm/(\d+)', listing_url)
                     if item_id_match:
                         item_id = item_id_match.group(1)
-                        # Use eBay's correct deep link format
-                        # Format: ebay://item/view?id=ITEM_ID (simpler format that works better)
-                        deep_link = f"ebay://item/view?id={item_id}"
-                        # Also provide web URL as fallback
-                        web_url = f"https://m.ebay.com/itm/{item_id}"
-                        # Try deep link first - if email client blocks it, web URL will be used
-                        # Note: Some email clients strip custom URL schemes, so web URL may be used
-                        link_html = f'<a href="{deep_link}" data-href-fallback="{web_url}" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
+                        # Use mobile web URL - eBay's mobile site detects app and shows "Open in App" banner
+                        # This is more reliable than deep links which email clients often block
+                        mobile_url = f"https://m.ebay.com/itm/{item_id}"
+                        link_html = f'<a href="{mobile_url}" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
                     else:
                         link_html = f'<a href="{listing_url}" target="_blank" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
                 elif listing['platform'].lower() == 'depop':
-                    # Depop deep links
-                    product_match = re.search(r'/products/([^/?]+)', listing_url)
-                    if product_match:
-                        product_slug = product_match.group(1)
-                        deep_link = f"depop://product/{product_slug}"
-                        link_html = f'<a href="{deep_link}" data-href-fallback="{listing_url}" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
-                    else:
-                        link_html = f'<a href="{listing_url}" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
+                    # Depop URLs work well as-is
+                    link_html = f'<a href="{listing_url}" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
                 else:
                     link_html = f'<a href="{listing_url}" target="_blank" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
                 
@@ -424,7 +417,7 @@ class VintageClothingMonitorBot:
                 <small>This email was sent by your Vintage Clothing Monitor Bot</small>
             </div>
             <div style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 4px; font-size: 11px; color: #856404;">
-                <strong>📱 Mobile App Tip:</strong> If links open in Chrome instead of the app, go to your phone Settings → Apps → eBay → Open by default → Enable "Open supported links in this app"
+                <strong>📱 Mobile App Tip:</strong> Links will open in your browser first. Look for the "Open in App" banner at the top of the page, or configure your phone: Settings → Apps → eBay → Open by default → Enable "Open supported links in this app"
             </div>
         </body>
         </html>
