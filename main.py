@@ -371,24 +371,34 @@ class VintageClothingMonitorBot:
                 else:
                     img_html = '<div class="no-image">No Image</div>'
                 
-                # Create mobile-optimized links that work better with email clients
+                # Create links optimized for mobile app opening
                 listing_url = listing.get('url', '')
                 
-                # For eBay: Use mobile web URL with m.ebay.com which handles app opening better
+                # For eBay: Try direct deep link (may be blocked by email clients, but worth trying)
                 if listing['platform'].lower() == 'ebay':
                     # Extract item ID from eBay URL (format: /itm/ITEM_ID)
                     item_id_match = re.search(r'/itm/(\d+)', listing_url)
                     if item_id_match:
                         item_id = item_id_match.group(1)
-                        # Use mobile subdomain - better app detection and opening
-                        # The mobile site will show "Open in App" banner and handle deep linking
-                        mobile_url = f"https://m.ebay.com/itm/{item_id}"
-                        link_html = f'<a href="{mobile_url}" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
+                        # Use eBay's correct deep link format
+                        # Format: ebay://item/view?id=ITEM_ID (simpler format that works better)
+                        deep_link = f"ebay://item/view?id={item_id}"
+                        # Also provide web URL as fallback
+                        web_url = f"https://m.ebay.com/itm/{item_id}"
+                        # Try deep link first - if email client blocks it, web URL will be used
+                        # Note: Some email clients strip custom URL schemes, so web URL may be used
+                        link_html = f'<a href="{deep_link}" data-href-fallback="{web_url}" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
                     else:
                         link_html = f'<a href="{listing_url}" target="_blank" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
                 elif listing['platform'].lower() == 'depop':
-                    # Depop mobile URLs already work well
-                    link_html = f'<a href="{listing_url}" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
+                    # Depop deep links
+                    product_match = re.search(r'/products/([^/?]+)', listing_url)
+                    if product_match:
+                        product_slug = product_match.group(1)
+                        deep_link = f"depop://product/{product_slug}"
+                        link_html = f'<a href="{deep_link}" data-href-fallback="{listing_url}" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
+                    else:
+                        link_html = f'<a href="{listing_url}" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
                 else:
                     link_html = f'<a href="{listing_url}" target="_blank" style="color: #3498db; text-decoration: none; font-size: 12px;">View Listing →</a>'
                 
@@ -412,6 +422,9 @@ class VintageClothingMonitorBot:
         html += """
             <div style="margin-top: 20px; padding: 10px; background: #f8f9fa; border-radius: 4px; text-align: center;">
                 <small>This email was sent by your Vintage Clothing Monitor Bot</small>
+            </div>
+            <div style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 4px; font-size: 11px; color: #856404;">
+                <strong>📱 Mobile App Tip:</strong> If links open in Chrome instead of the app, go to your phone Settings → Apps → eBay → Open by default → Enable "Open supported links in this app"
             </div>
         </body>
         </html>
