@@ -200,27 +200,30 @@ class EbaySeleniumScraper:
                 
             except Exception as e:
                 error_msg = str(e)
-                # Check if it's a tab crash
-                if 'tab crashed' in error_msg.lower() or 'session' in error_msg.lower():
-                    logger.warning(f"Tab crashed for '{search_term}'. Restarting driver...")
+                # Check if it's a tab crash or session error
+                if 'tab crashed' in error_msg.lower() or 'session' in error_msg.lower() or 'invalid session' in error_msg.lower():
+                    logger.warning(f"Tab/session error for '{search_term}'. Attempting to restart driver...")
                     try:
                         self.close()
                         time.sleep(3)
                         self.setup_driver()
                         if self.driver is None:
-                            logger.error("Failed to restart driver after tab crash")
-                            break
-                        # Retry the search after restart
+                            logger.error(f"Failed to restart driver after error for '{search_term}'. Skipping this search term.")
+                            continue  # Skip this term instead of breaking
+                        # Retry the search after restart (only once)
                         try:
+                            logger.info(f"Retrying search for '{search_term}' after driver restart...")
                             listings = self._search_single_term_selenium(search_term, max_pages)
                             all_listings.extend(listings)
+                            logger.info(f"Successfully retried search for '{search_term}'")
                         except Exception as retry_error:
-                            logger.error(f"Retry failed for '{search_term}': {retry_error}")
+                            logger.error(f"Retry failed for '{search_term}': {retry_error}. Skipping this search term.")
+                            continue  # Skip this term after failed retry
                     except Exception as restart_error:
-                        logger.error(f"Failed to restart driver: {restart_error}")
-                        break
+                        logger.error(f"Failed to restart driver for '{search_term}': {restart_error}. Skipping this search term.")
+                        continue  # Skip this term instead of breaking
                 else:
-                    logger.error(f"Error searching for '{search_term}': {e}")
+                    logger.error(f"Error searching for '{search_term}': {e}. Skipping this search term.")
                 continue
         
         logger.info(f"Found {len(all_listings)} total eBay listings with Selenium")
@@ -241,11 +244,13 @@ class EbaySeleniumScraper:
             logger.info(f"Navigating to: {search_url}")
             
             try:
+                # Set page load timeout to prevent hanging
+                self.driver.set_page_load_timeout(30)
                 self.driver.get(search_url)
             except Exception as nav_error:
                 error_msg = str(nav_error).lower()
-                if 'tab crashed' in error_msg or 'session' in error_msg:
-                    logger.warning(f"Tab crashed during navigation for '{search_term}'")
+                if 'tab crashed' in error_msg or 'session' in error_msg or 'timeout' in error_msg:
+                    logger.warning(f"Navigation error for '{search_term}': {nav_error}")
                     raise  # Re-raise to trigger restart in search_listings
                 raise
             

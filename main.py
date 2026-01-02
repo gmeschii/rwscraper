@@ -416,8 +416,11 @@ class VintageClothingMonitorBot:
             <div style="margin-top: 20px; padding: 10px; background: #f8f9fa; border-radius: 4px; text-align: center;">
                 <small>This email was sent by your Vintage Clothing Monitor Bot</small>
             </div>
-            <div style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 4px; font-size: 11px; color: #856404;">
-                <strong>📱 Mobile App Tip:</strong> Links will open in your browser first. Look for the "Open in App" banner at the top of the page, or configure your phone: Settings → Apps → eBay → Open by default → Enable "Open supported links in this app"
+            <div style="margin-top: 10px; padding: 12px; background: #fff3cd; border-radius: 4px; font-size: 11px; color: #856404; line-height: 1.5;">
+                <strong>📱 Opening Links in eBay App:</strong><br>
+                <strong>Gmail limitation:</strong> Gmail on mobile opens all links in Chrome first (this is a Gmail security feature).<br>
+                <strong>Solution:</strong> After the link opens in Chrome, look for the blue "Open in eBay App" banner at the top of the page and tap it.<br>
+                <strong>Alternative:</strong> Use Apple Mail app (iOS) or configure Android: Settings → Apps → eBay → Open by default → Enable "Open supported links"
             </div>
         </body>
         </html>
