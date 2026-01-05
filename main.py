@@ -433,6 +433,8 @@ class VintageClothingMonitorBot:
         logger.info("Starting monitoring cycle")
         
         new_listings = []
+        ebay_scraper = None
+        depop_scraper = None
         
         # Import scrapers here to avoid circular imports
         try:
@@ -443,36 +445,61 @@ class VintageClothingMonitorBot:
             return
         
         # Initialize scrapers
-        ebay_scraper = EbaySeleniumScraper()
-        depop_scraper = DepopSeleniumScraper()
+        try:
+            ebay_scraper = EbaySeleniumScraper()
+            depop_scraper = DepopSeleniumScraper()
+        except Exception as e:
+            logger.error(f"Failed to initialize scrapers: {e}")
+            return
         
         try:
             # Check eBay
             logger.info("Checking eBay...")
-            # Limit per term to reduce noise but still get newest first
-            ebay_listings = ebay_scraper.search_listings(SEARCH_TERMS)
-            for listing in ebay_listings:
-                if not self.is_listing_seen(listing['listing_id']):
-                    new_listings.append(listing)
-                    self.mark_listing_seen(listing)
+            try:
+                # Limit per term to reduce noise but still get newest first
+                ebay_listings = ebay_scraper.search_listings(SEARCH_TERMS)
+                for listing in ebay_listings:
+                    if not self.is_listing_seen(listing['listing_id']):
+                        new_listings.append(listing)
+                        self.mark_listing_seen(listing)
+            except Exception as e:
+                logger.error(f"Error scraping eBay: {e}")
+                # Continue with Depop even if eBay fails
             
             # Check Depop
             logger.info("Checking Depop...")
-            depop_listings = depop_scraper.search_listings(SEARCH_TERMS, max_pages=1, per_term_limit=30)
-            for listing in depop_listings:
-                if not self.is_listing_seen(listing['listing_id']):
-                    new_listings.append(listing)
-                    self.mark_listing_seen(listing)
+            try:
+                depop_listings = depop_scraper.search_listings(SEARCH_TERMS, max_pages=1, per_term_limit=30)
+                for listing in depop_listings:
+                    if not self.is_listing_seen(listing['listing_id']):
+                        new_listings.append(listing)
+                        self.mark_listing_seen(listing)
+            except Exception as e:
+                logger.error(f"Error scraping Depop: {e}")
+                # Continue even if Depop fails
         
         finally:
-            # Clean up Selenium driver
-            if hasattr(ebay_scraper, 'close'):
-                ebay_scraper.close()
+            # Clean up Selenium drivers to prevent memory leaks
+            try:
+                if hasattr(ebay_scraper, 'close'):
+                    ebay_scraper.close()
+            except Exception as e:
+                logger.error(f"Error closing eBay scraper: {e}")
+            
+            try:
+                if hasattr(depop_scraper, 'close'):
+                    depop_scraper.close()
+            except Exception as e:
+                logger.error(f"Error closing Depop scraper: {e}")
         
         # Send email if there are new listings
         if new_listings:
             logger.info(f"Found {len(new_listings)} new listings")
-            self.send_email_notification(new_listings)
+            try:
+                self.send_email_notification(new_listings)
+            except Exception as e:
+                logger.error(f"Error sending email notification: {e}")
+                # Don't crash the bot if email fails
         else:
             logger.info("No new listings found")
         
@@ -486,12 +513,24 @@ class VintageClothingMonitorBot:
         schedule.every().hour.do(self.run_monitoring_cycle)
         
         # Run immediately on startup
-        self.run_monitoring_cycle()
+        try:
+            self.run_monitoring_cycle()
+        except Exception as e:
+            logger.error(f"Error in initial monitoring cycle: {e}")
+            logger.info("Bot will continue and retry on next scheduled run")
         
-        # Keep the bot running
+        # Keep the bot running with error handling
         while True:
-            schedule.run_pending()
-            time.sleep(60)  # Check every minute
+            try:
+                schedule.run_pending()
+                time.sleep(60)  # Check every minute
+            except KeyboardInterrupt:
+                logger.info("Bot stopped by user")
+                break
+            except Exception as e:
+                logger.error(f"Unexpected error in main loop: {e}")
+                logger.info("Continuing bot operation...")
+                time.sleep(60)  # Wait before continuing
 
 if __name__ == "__main__":
     bot = VintageClothingMonitorBot()
