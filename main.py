@@ -433,6 +433,7 @@ class VintageClothingMonitorBot:
         logger.info("Starting monitoring cycle")
         
         new_listings = []
+        seen_in_cycle = set()  # Track listings seen in this cycle to prevent duplicates
         ebay_scraper = None
         depop_scraper = None
         
@@ -459,8 +460,11 @@ class VintageClothingMonitorBot:
                 # Limit per term to reduce noise but still get newest first
                 ebay_listings = ebay_scraper.search_listings(SEARCH_TERMS)
                 for listing in ebay_listings:
-                    if not self.is_listing_seen(listing['listing_id']):
+                    listing_id = listing['listing_id']
+                    # Check both database and current cycle to prevent duplicates
+                    if listing_id not in seen_in_cycle and not self.is_listing_seen(listing_id):
                         new_listings.append(listing)
+                        seen_in_cycle.add(listing_id)
                         self.mark_listing_seen(listing)
             except Exception as e:
                 logger.error(f"Error scraping eBay: {e}")
@@ -471,8 +475,11 @@ class VintageClothingMonitorBot:
             try:
                 depop_listings = depop_scraper.search_listings(SEARCH_TERMS, max_pages=1, per_term_limit=30)
                 for listing in depop_listings:
-                    if not self.is_listing_seen(listing['listing_id']):
+                    listing_id = listing['listing_id']
+                    # Check both database and current cycle to prevent duplicates
+                    if listing_id not in seen_in_cycle and not self.is_listing_seen(listing_id):
                         new_listings.append(listing)
+                        seen_in_cycle.add(listing_id)
                         self.mark_listing_seen(listing)
             except Exception as e:
                 logger.error(f"Error scraping Depop: {e}")
