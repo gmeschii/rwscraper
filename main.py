@@ -46,38 +46,43 @@ SEARCH_TERMS = [
     "cornell champion reverse weave",
     "cal champion reverse weave",
     "berkeley champion reverse weave",
+    "purdue champion reverse weave",
     "vintage champion reverse weave",
     "black champion reverse weave",
     "80s champion reverse weave",
     "90s champion reverse weave",
+    "70s champion reverse weave",
+    "60s champion reverse weave",
+    "50s champion reverse weave",
     "army champion reverse weave",
+    "military champion reverse weave",
     # North Face - Vintage 80s Puffer/Down Jackets
     "vintage 80s north face puffer",
     "vintage 80s north face down jacket",
     "80s north face puffer jacket",
-    "vintage north face puffer",
-    "vintage north face down jacket",
     "80s north face jacket",
-    "vintage north face nuptse",
-    "vintage north face mountain jacket",
+    "80s brown label north face jacket",
     # Levi's - Vintage Black Made in USA
-    "vintage black made in usa levi",
-    "vintage black levi made in usa",
-    "black levi made in usa",
-    "vintage black levi jacket",
     "vintage black levi denim jacket",
     "vintage black levi trucker",
     "vintage black levi type 3",
     "vintage black levi sherpa",
-    "vintage black levi corduroy",
     # Pendleton - Board Shirts and Loop Collars
     "vintage pendleton board shirt",
     "vintage pendleton loop collar",
-    "pendleton board shirt",
-    "pendleton loop collar",
-    "vintage pendleton wool shirt",
-    "vintage pendleton flannel",
-    "pendleton made in usa shirt"
+    # Miscellaneous items
+    "true vintage sweatshirt",
+    "true vintage double v sweatshirt",
+    "true vintage single v sweatshirt",
+    "vintage double v sweatshirt",
+    "vintage single v sweatshirt",
+    "vintage double face sweatshirt",
+    "true vintage chainstitch jacket",
+    "true vintage rayon shirt",
+    "true vintage rayon jacket",
+    "true vintage gabardine jacket",
+    "true vintage gabardine shirt",
+    "vintage shadow plaid arrow shirt"
 ]
 
 class VintageClothingMonitorBot:
@@ -107,6 +112,80 @@ class VintageClothingMonitorBot:
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully")
+    
+    def is_database_empty(self):
+        """Check if the database is empty (new deployment)"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM seen_listings')
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count == 0
+    
+    def seed_database_with_current_listings(self):
+        """On first run after deployment, scrape and mark all current listings as seen without sending emails"""
+        logger.info("Database appears empty - seeding with current listings to prevent duplicate emails...")
+        
+        # Import scrapers
+        try:
+            from ebay_selenium_scraper import EbaySeleniumScraper
+            from depop_selenium_scraper import DepopSeleniumScraper
+        except ImportError as e:
+            logger.error(f"Failed to import scrapers for seeding: {e}")
+            return
+        
+        ebay_scraper = None
+        depop_scraper = None
+        
+        try:
+            ebay_scraper = EbaySeleniumScraper()
+            depop_scraper = DepopSeleniumScraper()
+        except Exception as e:
+            logger.error(f"Failed to initialize scrapers for seeding: {e}")
+            return
+        
+        total_marked = 0
+        
+        try:
+            # Scrape eBay and mark all as seen
+            logger.info("Seeding eBay listings...")
+            try:
+                ebay_listings = ebay_scraper.search_listings(SEARCH_TERMS)
+                for listing in ebay_listings:
+                    if not self.is_listing_seen(listing['listing_id']):
+                        self.mark_listing_seen(listing)
+                        total_marked += 1
+                logger.info(f"Marked {len(ebay_listings)} eBay listings as seen")
+            except Exception as e:
+                logger.error(f"Error seeding eBay listings: {e}")
+            
+            # Scrape Depop and mark all as seen
+            logger.info("Seeding Depop listings...")
+            try:
+                depop_listings = depop_scraper.search_listings(SEARCH_TERMS, max_pages=1, per_term_limit=30)
+                for listing in depop_listings:
+                    if not self.is_listing_seen(listing['listing_id']):
+                        self.mark_listing_seen(listing)
+                        total_marked += 1
+                logger.info(f"Marked {len(depop_listings)} Depop listings as seen")
+            except Exception as e:
+                logger.error(f"Error seeding Depop listings: {e}")
+        
+        finally:
+            # Clean up
+            try:
+                if ebay_scraper and hasattr(ebay_scraper, 'close'):
+                    ebay_scraper.close()
+            except Exception as e:
+                logger.error(f"Error closing eBay scraper during seeding: {e}")
+            
+            try:
+                if depop_scraper and hasattr(depop_scraper, 'close'):
+                    depop_scraper.close()
+            except Exception as e:
+                logger.error(f"Error closing Depop scraper during seeding: {e}")
+        
+        logger.info(f"Database seeding complete - marked {total_marked} listings as seen. Future runs will only send new listings.")
     
     def is_listing_seen(self, listing_id):
         """Check if a listing has already been seen"""
@@ -516,10 +595,19 @@ class VintageClothingMonitorBot:
         """Start the monitoring bot"""
         logger.info("Starting Vintage Clothing Monitor Bot")
         
+        # Check if database is empty (new deployment) and seed it
+        if self.is_database_empty():
+            logger.info("New deployment detected - seeding database with current listings...")
+            try:
+                self.seed_database_with_current_listings()
+            except Exception as e:
+                logger.error(f"Error seeding database: {e}")
+                logger.info("Continuing with normal monitoring - some duplicates may appear")
+        
         # Schedule to run every hour
         schedule.every().hour.do(self.run_monitoring_cycle)
         
-        # Run immediately on startup
+        # Run immediately on startup (but only new listings will be sent)
         try:
             self.run_monitoring_cycle()
         except Exception as e:
