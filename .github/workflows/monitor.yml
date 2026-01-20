@@ -36,7 +36,7 @@ jobs:
           libxfixes3 \
           libxrandr2 \
           libgbm1 \
-          libasound2
+          libasound2t64
         # Ensure chromedriver is in PATH
         sudo ln -sf /usr/lib/chromium-browser/chromedriver /usr/local/bin/chromedriver || true
         # Verify Chrome and chromedriver are accessible
