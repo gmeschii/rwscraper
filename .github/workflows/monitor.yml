@@ -1,41 +1,11 @@
-# Detailed Instructions: Creating Workflow File on GitHub
-
-Follow these step-by-step instructions to create the workflow file directly on GitHub.
-
-## Step-by-Step Guide
-
-### Step 1: Open Your Repository
-1. Open your web browser
-2. Go to: **https://github.com/gmeschii/rwscraper**
-3. You should see your repository's main page
-
-### Step 2: Create the Workflow Directory Structure
-1. Look at the top of the repository page, near the green **"Code"** button
-2. Click the **"Add file"** dropdown button (it's next to "Code")
-3. From the dropdown menu, click **"Create new file"**
-
-### Step 3: Navigate to the Correct Path
-1. At the top of the file editor, you'll see a text box that says something like `rwscraper / [name your file]`
-2. Click in that text box
-3. Type exactly: **`.github/workflows/monitor.yml`**
-   - Note: The `.github` folder doesn't exist yet - GitHub will create it automatically when you type the full path
-   - Make sure to include the leading dot: `.github` (not `github`)
-   - The path should be: `.github/workflows/monitor.yml`
-
-### Step 4: Paste the Workflow Content
-1. Click in the large text editor area below the filename
-2. Delete any placeholder text if present
-3. Copy the entire workflow content below and paste it:
-
-```yaml
 name: Vintage Clothing Monitor
 
 on:
   schedule:
     # Run every 2 hours (cron format: minute hour day month weekday)
     # UTC timezone - adjust times as needed
-    - cron: '0 */2 * * *'  # Every 2 hours at minute 0
-  workflow_dispatch:  # Allow manual triggering
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
 
 jobs:
   monitor:
@@ -135,42 +105,4 @@ jobs:
         name: logs
         path: champion_monitor.log
         retention-days: 7
-```
-
-### Step 5: Commit the File
-1. Scroll down to the bottom of the page
-2. You'll see a section titled **"Commit new file"**
-3. In the first text box (optional), you can add a commit message like: `Add GitHub Actions workflow for 2-hour scheduling`
-4. Make sure the radio button is set to **"Commit directly to the `main` branch"** (or `master` if that's your default branch)
-5. Click the green **"Commit new file"** button
-
-### Step 6: Verify the File Was Created
-1. After clicking "Commit new file", you'll be redirected to your repository
-2. You should see a message like: "Create .github/workflows/monitor.yml"
-3. Navigate to verify: Click on the `.github` folder → `workflows` folder → `monitor.yml` file
-4. You should see your workflow file!
-
-### Step 7: Check That Actions Are Enabled
-1. Click on the **"Actions"** tab at the top of your repository
-2. If you see a message about enabling Actions, click **"I understand my workflows, go ahead and enable them"**
-3. You should now see your "Vintage Clothing Monitor" workflow listed
-
-## ✅ What Happens Next?
-
-- The workflow is now active and will run automatically every 2 hours
-- You can manually trigger it by going to Actions → "Vintage Clothing Monitor" → "Run workflow"
-- **Important:** Before it can run successfully, you need to add your secrets (see next section)
-
-## 🔐 Next Step: Add Secrets
-
-Before the workflow can send emails, you need to add your email credentials:
-
-1. Go to your repository → **Settings** (top menu)
-2. Click **Secrets and variables** → **Actions** (left sidebar)
-3. Click **"New repository secret"**
-4. Add your secrets (see `GITHUB_ACTIONS_SETUP.md` for details)
-
-## 🎉 Done!
-
-Your workflow is now set up and will run every 2 hours automatically once you add your secrets!
 
