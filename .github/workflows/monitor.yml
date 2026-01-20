@@ -75,7 +75,6 @@ jobs:
       with:
         name: database
         path: .
-        if-no-artifact-found: ignore
       continue-on-error: true
     
     - name: Run monitoring cycle
@@ -97,6 +96,7 @@ jobs:
         name: database
         path: champion_listings.db
         retention-days: 90
+      continue-on-error: true
     
     - name: Upload logs
       if: always()
@@ -105,4 +105,5 @@ jobs:
         name: logs
         path: champion_monitor.log
         retention-days: 7
+      continue-on-error: true
 
