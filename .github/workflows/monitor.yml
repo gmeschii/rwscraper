@@ -88,6 +88,7 @@ jobs:
         sleep 2  # Give Xvfb time to start
         # Run the monitoring script
         python run_once.py
+      continue-on-error: true
     
     - name: Upload database (artifact)
       if: always()
