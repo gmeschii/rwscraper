@@ -1,6 +1,6 @@
 # Vintage Clothing Monitor Bot
 # Monitors eBay and Depop for new vintage clothing listings
-# Sends hourly email notifications with no duplicates
+# Sends email notifications every 2 hours with no duplicates
 
 import os
 import sqlite3
@@ -515,6 +515,8 @@ class VintageClothingMonitorBot:
         seen_in_cycle = set()  # Track listings seen in this cycle to prevent duplicates
         ebay_scraper = None
         depop_scraper = None
+        total_ebay_checked = 0
+        total_depop_checked = 0
         
         # Import scrapers here to avoid circular imports
         try:
@@ -536,8 +538,11 @@ class VintageClothingMonitorBot:
             # Check eBay
             logger.info("Checking eBay...")
             try:
-                # Limit per term to reduce noise but still get newest first
-                ebay_listings = ebay_scraper.search_listings(SEARCH_TERMS)
+                # Limit to 1 page and only newest listings (sorted by _sop=10)
+                # This ensures we only check the most recent listings
+                ebay_listings = ebay_scraper.search_listings(SEARCH_TERMS, max_pages=1)
+                total_ebay_checked = len(ebay_listings)
+                logger.info(f"Found {total_ebay_checked} eBay listings (checking newest only)")
                 for listing in ebay_listings:
                     listing_id = listing['listing_id']
                     # Check both database and current cycle to prevent duplicates
@@ -545,6 +550,8 @@ class VintageClothingMonitorBot:
                         new_listings.append(listing)
                         seen_in_cycle.add(listing_id)
                         self.mark_listing_seen(listing)
+                    else:
+                        logger.debug(f"Skipping duplicate listing: {listing_id}")
             except Exception as e:
                 logger.error(f"Error scraping eBay: {e}")
                 # Continue with Depop even if eBay fails
@@ -552,7 +559,11 @@ class VintageClothingMonitorBot:
             # Check Depop
             logger.info("Checking Depop...")
             try:
-                depop_listings = depop_scraper.search_listings(SEARCH_TERMS, max_pages=1, per_term_limit=30)
+                # Limit to 1 page and only 20 newest listings per term (sorted by newest)
+                # This ensures we only check the most recent listings
+                depop_listings = depop_scraper.search_listings(SEARCH_TERMS, max_pages=1, per_term_limit=20)
+                total_depop_checked = len(depop_listings)
+                logger.info(f"Found {total_depop_checked} Depop listings (checking newest only)")
                 for listing in depop_listings:
                     listing_id = listing['listing_id']
                     # Check both database and current cycle to prevent duplicates
@@ -560,6 +571,8 @@ class VintageClothingMonitorBot:
                         new_listings.append(listing)
                         seen_in_cycle.add(listing_id)
                         self.mark_listing_seen(listing)
+                    else:
+                        logger.debug(f"Skipping duplicate listing: {listing_id}")
             except Exception as e:
                 logger.error(f"Error scraping Depop: {e}")
                 # Continue even if Depop fails
@@ -580,14 +593,20 @@ class VintageClothingMonitorBot:
         
         # Send email if there are new listings
         if new_listings:
-            logger.info(f"Found {len(new_listings)} new listings")
+            logger.info(f"Found {len(new_listings)} NEW listings (duplicates filtered out)")
             try:
                 self.send_email_notification(new_listings)
             except Exception as e:
                 logger.error(f"Error sending email notification: {e}")
                 # Don't crash the bot if email fails
         else:
-            logger.info("No new listings found")
+            logger.info("No new listings found - all listings were already seen")
+        
+        # Log summary
+        total_checked = total_ebay_checked + total_depop_checked
+        duplicates_filtered = total_checked - len(new_listings)
+        if total_checked > 0:
+            logger.info(f"Summary: Checked {total_checked} listings ({total_ebay_checked} eBay, {total_depop_checked} Depop), {duplicates_filtered} were duplicates, {len(new_listings)} were new")
         
         logger.info("Monitoring cycle completed")
     
@@ -604,8 +623,8 @@ class VintageClothingMonitorBot:
                 logger.error(f"Error seeding database: {e}")
                 logger.info("Continuing with normal monitoring - some duplicates may appear")
         
-        # Schedule to run every hour
-        schedule.every().hour.do(self.run_monitoring_cycle)
+        # Schedule to run every 2 hours
+        schedule.every(2).hours.do(self.run_monitoring_cycle)
         
         # Run immediately on startup (but only new listings will be sent)
         try:
