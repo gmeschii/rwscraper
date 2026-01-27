@@ -293,10 +293,11 @@ class EbaySeleniumScraper:
         
         try:
             # Use JavaScript to extract all data at once (much faster than find_element)
+            # Limit to 25 items per search term to focus on newest listings only
             script = """
             var items = document.querySelectorAll('li.s-card, li[class*="s-card"], div[class*="s-item"], div.s-item, li.s-item');
             var results = [];
-            var maxItems = Math.min(items.length, 50);
+            var maxItems = Math.min(items.length, 25);
             
             for (var i = 0; i < maxItems; i++) {
                 var item = items[i];
